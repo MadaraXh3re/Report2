@@ -11,14 +11,14 @@ from typing import List
 from pyrogram import Client, errors
 from pyrogram.raw import functions, types
 
-# ======================================================
-#          Telegram Auto Reporter v6.0 (Oxeigns)
-# ======================================================
 
+# ======================================================
+#          Telegram Auto Reporter v6.5 (Oxeigns)
+# ======================================================
 BANNER = r"""
 ╔═════════════════════════════════════════════════════════════════════════╗
-║ 🚨 Telegram Auto Reporter v6.0 (Oxeigns)                               ║
-║   Smart Session Filter | Auto Join Log Group | Live Telegram Logging   ║
+║ 🚨 Telegram Auto Reporter v6.5 (Oxeigns)                               ║
+║   Smart Session Filter | Config Summary | Auto Join Log Group          ║
 ╚═════════════════════════════════════════════════════════════════════════╝
 """
 print(BANNER)
@@ -40,18 +40,16 @@ MESSAGE_LINK = os.getenv("MESSAGE_LINK", CONFIG["MESSAGE_LINK"])
 REPORT_TEXT = os.getenv("REPORT_TEXT", CONFIG["REPORT_TEXT"])
 NUMBER_OF_REPORTS = int(os.getenv("NUMBER_OF_REPORTS", CONFIG["NUMBER_OF_REPORTS"]))
 
-# Hardcoded log group
+# Hardcoded log group (fixed)
 LOG_GROUP_LINK = "https://t.me/+bZAKT6wMT_gwZTFl"
 LOG_GROUP_ID = -5094423230
 
-# Collect all sessions
+# Gather all session strings
 SESSIONS: List[str] = [v.strip() for k, v in os.environ.items() if k.startswith("SESSION_") and v.strip()]
 
 if not SESSIONS:
     print("❌ No sessions found! Add SESSION_1, SESSION_2, etc. in Heroku Config Vars.")
     sys.exit(1)
-
-print(f"✅ Loaded {len(SESSIONS)} sessions. Target: {NUMBER_OF_REPORTS} reports.\n")
 
 # ================= UTILITIES ===================
 
@@ -84,7 +82,6 @@ def log(msg: str, level: str = "INFO"):
 
 
 async def async_log(app: Client, msg: str, level: str = "INFO"):
-    """Send log to console and Telegram log group."""
     log(msg, level)
     try:
         await app.send_message(LOG_GROUP_ID, f"**[{level}]** {msg}")
@@ -92,28 +89,26 @@ async def async_log(app: Client, msg: str, level: str = "INFO"):
         pass
 
 
-# ================= GROUP INFO ===================
+# ================= CONFIG SUMMARY ===================
 
-async def fetch_target_info(app: Client, chat_link: str, message_id: int):
-    """Fetch metadata about the target chat & message."""
-    chat = await app.get_chat(chat_link)
-    msg = await app.get_messages(chat.id, message_id)
-    chat_type = chat.type.name.capitalize()
-    members = getattr(chat, "members_count", "Unknown")
-
-    await async_log(app, f"📡 Target Group: {chat.title}", "INFO")
-    await async_log(app, f"👥 Members: {members}", "INFO")
-    await async_log(app, f"📝 Description: {chat.description or 'No description'}", "INFO")
-
-    sender = msg.from_user.first_name if msg.from_user else "Unknown"
-    username = f"@{msg.from_user.username}" if msg.from_user and msg.from_user.username else "No username"
-    preview = (msg.text or msg.caption or "No text").replace("\n", " ")[:100]
-
-    await async_log(app, f"🎯 Message ID: {msg.id} | Sender: {sender} ({username})", "INFO")
-    await async_log(app, f"📄 Preview: {preview}", "INFO")
+def show_config_summary():
+    print("\n🔧 Loaded Configuration Summary:")
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print(f"🆔 API_ID: {API_ID}")
+    print(f"🔑 API_HASH: {'✅ Loaded' if API_HASH else '❌ Missing'}")
+    print(f"📡 Channel Link: {CHANNEL_LINK}")
+    print(f"💬 Message Link: {MESSAGE_LINK}")
+    print(f"🧾 Report Text: {REPORT_TEXT}")
+    print(f"📊 Number of Reports: {NUMBER_OF_REPORTS}")
+    print(f"👥 Total Sessions Found: {len(SESSIONS)}")
+    print(f"🛰️ Log Group: {LOG_GROUP_LINK} (ID: {LOG_GROUP_ID})")
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
 
 
-# ================= SESSION VALIDATION ===================
+show_config_summary()
+
+
+# ================= VALIDATION ===================
 
 async def validate_session(session_str: str) -> bool:
     """Check if session is valid (skip invalid ones)."""
@@ -129,18 +124,33 @@ async def validate_session(session_str: str) -> bool:
         return False
 
 
+# ================= TARGET INFO ===================
+
+async def fetch_target_info(app: Client, chat_link: str, message_id: int):
+    chat = await app.get_chat(chat_link)
+    msg = await app.get_messages(chat.id, message_id)
+    members = getattr(chat, "members_count", "Unknown")
+
+    await async_log(app, f"📡 Target: {chat.title}", "INFO")
+    await async_log(app, f"👥 Members: {members}", "INFO")
+    await async_log(app, f"📝 Description: {chat.description or 'No description'}", "INFO")
+
+    sender = msg.from_user.first_name if msg.from_user else "Unknown"
+    username = f"@{msg.from_user.username}" if msg.from_user and msg.from_user.username else "No username"
+    preview = (msg.text or msg.caption or "No text").replace("\n", " ")[:100]
+    await async_log(app, f"🎯 Message: {msg.id} | Sender: {sender} ({username})", "INFO")
+    await async_log(app, f"📄 Preview: {preview}", "INFO")
+
+
 # ================= REPORT ===================
 
 async def send_report(session_str: str, index: int, channel: str, message_id: int, stats: dict):
     """Send report safely using valid session only."""
     try:
-        async with Client(
-            f"reporter_{index}", api_id=API_ID, api_hash=API_HASH, session_string=session_str, no_updates=True
-        ) as app:
+        async with Client(f"reporter_{index}", api_id=API_ID, api_hash=API_HASH, session_string=session_str, no_updates=True) as app:
             me = await app.get_me()
             await async_log(app, f"👤 Session {index}: {me.first_name} ({me.id}) active", "INFO")
 
-            # Auto-join log group
             try:
                 await app.join_chat(LOG_GROUP_LINK)
             except errors.UserAlreadyParticipant:
@@ -156,11 +166,7 @@ async def send_report(session_str: str, index: int, channel: str, message_id: in
             msg = await app.get_messages(chat.id, message_id)
             await asyncio.sleep(random.uniform(1.0, 2.5))
 
-            await app.invoke(
-                functions.messages.Report(
-                    peer=peer, id=[msg.id], reason=REASON, message=REPORT_TEXT
-                )
-            )
+            await app.invoke(functions.messages.Report(peer=peer, id=[msg.id], reason=REASON, message=REPORT_TEXT))
 
             stats["success"] += 1
             await async_log(app, f"✅ Report sent by {me.first_name} (session {index})", "OK")
@@ -197,9 +203,8 @@ async def main():
     except Exception:
         pass
 
-    # Validate all sessions first
-    valid_sessions = []
     log("🔍 Checking sessions validity...", "INFO")
+    valid_sessions = []
     for s in SESSIONS:
         if await validate_session(s):
             valid_sessions.append(s)
@@ -217,7 +222,7 @@ async def main():
     tasks = [send_report(session, i + 1, CHANNEL_LINK, msg_id, stats) for i, session in enumerate(used_sessions)]
 
     async def progress():
-        while any(not t.done() for t in asyncio.all_tasks() if t is not asyncio.current_task()):
+        while any(not t.done() for t in tasks):
             log(f"📊 Progress — ✅ {stats['success']} | ❌ {stats['failed']}", "INFO")
             await asyncio.sleep(5)
 
@@ -229,7 +234,6 @@ async def main():
     log(f"❌ Failed: {stats['failed']}", "ERR")
     log(f"📈 Total attempted: {total_reports}\n", "INFO")
 
-    # Send final summary using first valid session
     try:
         async with Client("logger", api_id=API_ID, api_hash=API_HASH, session_string=valid_sessions[0]) as logger_app:
             await logger_app.send_message(
